@@ -1,0 +1,120 @@
+#!/bin/bash
+
+CONFIG_FILE="$HOME/.externMonitor.rc"
+TMP_FILE="/tmp/externMonitor"
+
+position=""
+if [ -e $CONFIG_FILE ]; then
+    source $CONFIG_FILE
+fi
+
+function print_help()
+{
+    echo -e "$0 usage: $0 <command>"
+    echo -e "command values:"
+    echo -e "\t --left external monitor is left of laptop."
+    echo -e "\t --right external monitor is rght of laptop."
+    echo -e "\t --clone external monitor is a clone of laptop."
+    echo -e "\t --off unplug external monitor."
+    echo -e "\t --toggle switch between previous three commands."
+    echo -e "\t --docked switch to dock mode with 2 externs monitor."
+    echo -e "\t --list list available extern monitor."
+    exit 1
+}
+
+function call_xrandr()
+{
+    pos=$1
+    monitors=("$@")
+    if [ $pos == "--off" ]; then
+        xrandr_param=""
+        for (( ind=1; ind<${#monitors[*]}; ind++ )); do
+            echo "$ind ${monitors[$ind]}"
+            xrandr_param=$xrandr_param" --output ${monitors[$ind]} --off"
+        done
+        xrandr --output $LAPTOP_MONITOR --auto $xrandr_param
+
+    elif [[ ($pos == "--dock") ]]; then
+        xrandr --output $LAPTOP_MONITOR --off --output $DOCK_RIGHT_MONITOR --auto --output $DOCK_LEFT_MONITOR --auto --left-of $DOCK_RIGHT_MONITOR
+    else
+        xrandr --output $LAPTOP_MONITOR --auto --output ${monitors[1]} --auto $pos $LAPTOP_MONITOR
+    fi
+}
+
+function read_monitor_name()
+{
+    displayName=(`xrandr | grep " connected"| awk '{print $1}' | sed -e '/'$LAPTOP_MONITOR'/d'`)
+}
+
+if [ $# -ne 1 ] && [ $# -ne 2 ]; then
+    print_help
+fi
+
+param=$1
+if [ -z $2 ]; then
+    read_monitor_name
+else
+    displayName[0]=$2
+fi
+
+if [ $param == "--left" ]; then
+    echo "${displayName[0]} left of laptop"
+    position="--left-of"
+
+elif [ $param == "--right" ]; then
+    echo "${displayName[0]} right of laptop"
+    position="--right-of"
+
+elif [ $param == "--off" ]; then
+    echo "external monitor off"
+    position="--off"
+
+elif [ $param == "--dock" ]; then
+    echo "$LAPTOP_MONITOR off. $DOCK_LEFT_MONITOR and $DOCK_RIGHT_MONITOR on."
+    position="--dock"
+
+elif [ $param == "--clone" ]; then
+    echo "${#displayName[1]} same as laptop"}
+    position="--same-as"
+
+elif [ $param == "--toggle" ]; then
+    if [ -e "$TMP_FILE" ]; then
+        source $TMP_FILE
+    fi
+    if [ ${#displayName[*]} -eq 1 ]; then
+        if [[ ($position=="--off") || ($cur_pos == "")]]; then
+            echo "${displayName[1]} right of laptop"
+            position="--right-of"
+        elif [ $position=="--right-of" ]; then
+            echo "${displayName[1]} left of laptop"
+            position="--left-of"
+        elif [[ ($position=="--left-of") ]]; then
+            echo "${displayName[1]} clone of laptop"
+            position="--same-as"
+        else
+            echo "${displayName[1]} off"
+            position="--off"
+        fi
+
+    elif [ ${#displayName[*]} -eq 2 ]; then
+        position="--dock"
+
+    elif [ ${#displayName[*]} -eq 0 ]; then
+        echo "$LAPTOP_MONITOR on."
+        position="--off"
+    else
+        echo "to many monitor for this script."
+        exit 1
+    fi
+
+elif [ $param == "--list" ]; then
+    echo "display name : ${displayName[*]}"
+else
+    print_help
+fi
+
+if [ -n $position ] ; then
+    echo "position=$position">$TMP_FILE
+    call_xrandr $position ${displayName[*]}
+fi
+exit 0
